@@ -1,4 +1,5 @@
-import { localMode, localProposals } from '../../../lib/local-proposals';
+import { localMode } from '../../../lib/local-identity';
+import { localProposals } from '../../../lib/local-proposals';
 import { createClient } from '@supabase/supabase-js';
 
 const headers = { 'Cache-Control': 'no-store' };

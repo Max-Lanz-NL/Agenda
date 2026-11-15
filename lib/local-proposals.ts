@@ -1,22 +1,12 @@
-import { createHash, randomUUID } from 'node:crypto';
+import { localBrowser, uuid } from './local-identity';
+import { friendProposalShare } from './local-friends';
+import { randomUUID } from 'node:crypto';
 import { mkdir, readFile, rename, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import type { Proposal } from './proposals';
 
 export const localShareDirectory = join(process.cwd(), '.agenda-local', 'links');
-export const localMode = () => !process.env.VERCEL && !process.env.NEXT_PUBLIC_SUPABASE_URL;
-const uuid = /^[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}$/i;
 const clock = /^(?:[01]\d|2[0-3]):[0-5]\d$/;
-
-export function localBrowser(request: Request) {
-  if (!localMode() || request.headers.get('sec-fetch-site') === 'cross-site') return null;
-  const host = request.headers.get('host') || new URL(request.url).host;
-  if (!/^(localhost|127[.]0[.]0[.]1|\[::1\])(?::[0-9]{1,5})?$/i.test(host)) return null;
-  const origin = request.headers.get('origin');
-  const key = request.headers.get('x-agenda-browser');
-  if (origin && origin !== 'http://' + host && origin !== 'https://' + host) return null;
-  return key && uuid.test(key) ? createHash('sha256').update(key).digest('hex') : null;
-}
 
 type LocalProposal = Omit<Proposal, 'incoming'> & { owner: string; senderId: string };
 const file = join(process.cwd(), '.agenda-local', 'proposals.json');
@@ -75,7 +65,7 @@ export async function localProposals(request: Request) {
       typeof input.end !== 'string' || !clock.test(input.end) || input.end <= input.start ||
       typeof input.message !== 'string' || input.message.length > 500 ||
       typeof input.sender !== 'string' || !input.sender.trim() || input.sender.length > 60) return json({ code: 'invalid' }, 400);
-    const link = await readFile(join(localShareDirectory, input.token + '.json'), 'utf8').then(text => JSON.parse(text)).catch(() => null);
+    const link = await friendProposalShare(input.token, actor) || await readFile(join(localShareDirectory, input.token + '.json'), 'utf8').then(text => JSON.parse(text)).catch(() => null);
     if (!link || Date.parse(link.expires_at) <= Date.now()) return json({ code: 'unavailable' }, 409);
     if (!link.owner) return json({ code: 'old_link' }, 409);
     if (link.owner === actor) return json({ code: 'own_link' }, 409);

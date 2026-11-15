@@ -1,4 +1,5 @@
-import { localBrowser, localShareDirectory } from '../../../lib/local-proposals';
+import { localBrowser } from '../../../lib/local-identity';
+import { localShareDirectory } from '../../../lib/local-proposals';
 import { createHash, randomUUID } from 'node:crypto';
 import { mkdir, readFile, unlink, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
@@ -62,14 +63,15 @@ export async function GET(request: Request) {
 
 export async function POST(request: Request) {
   if (!canWriteLocally(request)) return respond(403);
-  let input: { lifetime?: number; slots?: unknown };
+  let input: { lifetime?: number; name?: unknown; slots?: unknown };
   try {
     const text = await request.text();
     if (text.length > 262144) return respond(413);
     input = JSON.parse(text);
-    if (!input || ![1, 7, 30].includes(input.lifetime ?? 0)) return respond(400);
+    if (!input || ![1, 7, 30, 365].includes(input.lifetime ?? 0) || typeof input.name !== 'string' || !input.name.trim() || input.name.trim().length > 80) return respond(400);
   } catch { return respond(400); }
 
+  const name = input.name.trim();
   const slots = safeRows(input.slots).filter(row => row.busy);
   if (!slots.length) return respond(400);
   const token = randomUUID();
@@ -77,8 +79,8 @@ export async function POST(request: Request) {
   const expires_at = new Date(Date.now() + input.lifetime! * 86400000).toISOString();
   try {
     await mkdir(directory, { recursive: true });
-    await writeFile(linkPath(token), JSON.stringify({ slots, expires_at, revokeHash: digest(revokeKey), owner: localBrowser(request) }), { flag: 'wx' });
-    return Response.json({ token, expires_at, revokeKey }, { status: 201, headers });
+    await writeFile(linkPath(token), JSON.stringify({ slots, name, expires_at, revokeHash: digest(revokeKey), owner: localBrowser(request) }), { flag: 'wx' });
+    return Response.json({ token, name, expires_at, revokeKey }, { status: 201, headers });
   } catch { return respond(500); }
 }
 

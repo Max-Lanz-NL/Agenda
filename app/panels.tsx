@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useRef, useState, type Dispatch, type SetStateAction } from 'react';
-import { CalendarDays, ChevronDown, ChevronLeft, ChevronRight, Clock3, Copy, Globe2, Link2, Search, Share2 } from 'lucide-react';
+import { CalendarDays, ChevronDown, ChevronLeft, ChevronRight, Clock3, Copy, Globe2, Link2, Search, Share2, Unlink2 } from 'lucide-react';
 import { SharedWeek } from './shared-week';
 import { cloud, localBrowserKey } from '../lib/proposals';
 import ICAL from 'ical.js';
@@ -10,7 +10,8 @@ import { add, busyBlocks, changeMonth, defaults, format, freeBlocks, key, labels
 import { calendarIcons, resolveCalendarIcon } from '../lib/calendar-icons';
 
 type Calendar = typeof defaults[number];
-export type Preferences = { group: boolean; dark: boolean };
+export const defaultProfileName = 'Max Witte';
+export type Preferences = { group: boolean; dark: boolean; displayName?: string };
 type Workspace = { events: Event[]; calendars: Calendar[]; preferences: Preferences; tasks: { title: string; done: boolean }[] };
 export function SettingsPanel({ preferences, setPreferences, workspace, restore }: { preferences: Preferences; setPreferences: Dispatch<SetStateAction<Preferences>>; workspace: Workspace; restore: (data: Workspace) => void }) {
   const [email, setEmail] = useState('');
@@ -36,7 +37,7 @@ export function SettingsPanel({ preferences, setPreferences, workspace, restore 
   return <div className="card form-card form-grid"><h2>Weergave</h2>
     <label className="check"><input type="checkbox" checked={preferences.group} onChange={e => setPreferences(current => ({ ...current, group: e.target.checked }))} />Schooluren samenvoegen</label>
     <label className="check"><input type="checkbox" checked={preferences.dark} onChange={e => setPreferences(current => ({ ...current, dark: e.target.checked }))} />Donkere modus</label>
-    <h2>Account</h2>{!cloud ? <p>Supabase is nog niet geconfigureerd. Afspraken worden in deze browser bewaard.</p> : user ? <>
+    <h2>Account</h2><label>Profielnaam<input type="text" maxLength={60} value={preferences.displayName ?? defaultProfileName} onChange={event => setPreferences(current => ({ ...current, displayName: event.target.value }))} onBlur={event => { const displayName = event.target.value.trim() || defaultProfileName; setPreferences(current => ({ ...current, displayName })); }} /></label>{!cloud ? <p>Supabase is nog niet geconfigureerd. Afspraken worden in deze browser bewaard.</p> : user ? <>
       <p>Ingelogd als {user}</p><div className="wrap"><button className="control" onClick={() => backup(false)}>Back-up opslaan</button><button className="control" onClick={() => backup(true)}>Back-up terugzetten</button><button className="control" onClick={() => cloud.auth.signOut()}>Uitloggen</button></div>
     </> : <form className="form-grid" onSubmit={async e => { e.preventDefault(); const { error } = await cloud.auth.signInWithOtp({ email, options: { emailRedirectTo: location.origin } }); setStatus(error?.message || 'Controleer je e-mail voor de inloglink.'); }}><label>E-mailadres<input type="email" required value={email} onChange={e => setEmail(e.target.value)} /></label><button className="primary">Stuur een inloglink</button></form>}
     <p role="status">{status}</p>
@@ -205,7 +206,7 @@ function SlotList({ rows }: { rows: SlotDay[] }) {
   return <div className="slot-list">{rows.map(({ day, slots }) => <div key={day}><b>{format(day, { weekday: 'long', day: 'numeric', month: 'long' })}</b><span>{slots.length ? slots.join(' · ') : 'Geen vrije tijd'}</span></div>)}</div>;
 }
 
-type ShareLink = { token: string; expires_at: string; revokeKey?: string };
+type ShareLink = { token: string; expires_at: string; name?: string | null; revokeKey?: string };
 
 function ShareCalendar({ from, to, onChange }: { from: string; to: string; onChange: (from: string, to: string) => void }) {
   const [month, setMonth] = useState(() => monthStart(from || key(new Date())));
@@ -261,6 +262,8 @@ export function Availability({ calendars, events, day }: { calendars: Calendar[]
   const [days, setDays] = useState([1, 2, 3, 4, 5, 6, 0]);
   const [included, setIncluded] = useState(calendars.map(calendar => calendar.id));
   const [lifetime, setLifetime] = useState(7);
+  const [linkName, setLinkName] = useState('');
+  const nameDialog = useRef<HTMLDialogElement>(null);
   const [status, setStatus] = useState('');
   const [links, setLinks] = useState<ShareLink[]>([]);
   const [saving, setSaving] = useState(false);
@@ -282,7 +285,7 @@ export function Availability({ calendars, events, day }: { calendars: Calendar[]
       } catch { setLinks([]); }
       return;
     }
-    void cloud.from('availability_links').select('token, expires_at').gt('expires_at', new Date().toISOString()).order('expires_at').then(({ data }) => { if (data) setLinks(data); });
+    void cloud.from('availability_links').select('token, expires_at, name').gt('expires_at', new Date().toISOString()).order('expires_at').then(({ data }) => { if (data) setLinks(data); });
   }, []);
 
   async function copy(value: string) {
@@ -290,7 +293,9 @@ export function Availability({ calendars, events, day }: { calendars: Calendar[]
   }
 
   async function publish() {
-    if (!rows.length || !included.length || saving) return;
+    const name = linkName.trim();
+    if (!name || !rows.length || !included.length || saving) return;
+    if (lifetime === 365 && !window.confirm('Weet je zeker dat je deze link een jaar geldig wilt maken? Iedereen met de link kan in die tijd de gedeelde bezette tijden bekijken.')) return;
     setSaving(true);
     try {
       const slots = rows.map(({ day }) => ({ day, busy: true, slots: busyBlocks(considered, day) }));
@@ -298,18 +303,20 @@ export function Availability({ calendars, events, day }: { calendars: Calendar[]
       if (cloud) {
         const { data } = await cloud.auth.getUser();
         if (!data.user) { setStatus('Log eerst in via Instellingen.'); return; }
-        link = { token: crypto.randomUUID(), expires_at: new Date(Date.now() + lifetime * 86400000).toISOString() };
+        link = { token: crypto.randomUUID(), name, expires_at: new Date(Date.now() + lifetime * 86400000).toISOString() };
         const { error } = await cloud.from('availability_links').insert({ ...link, user_id: data.user.id, slots });
         if (error) throw error;
       } else {
         const response = await fetch('/api/available', {
-          method: 'POST', headers: { 'Content-Type': 'application/json', 'x-agenda-browser': localBrowserKey() }, body: JSON.stringify({ lifetime, slots }),
+          method: 'POST', headers: { 'Content-Type': 'application/json', 'x-agenda-browser': localBrowserKey() }, body: JSON.stringify({ lifetime, name, slots }),
         });
         if (!response.ok) throw new Error();
         link = await response.json();
         localStorage.setItem('agenda-local-links', JSON.stringify([...links, link]));
       }
       setLinks(current => [...current, link]);
+      setLinkName('');
+      nameDialog.current?.close();
       setStatus('Agendalink aangemaakt.');
     } catch { setStatus('De agendalink kon niet worden aangemaakt.'); }
     finally { setSaving(false); }
@@ -337,6 +344,7 @@ export function Availability({ calendars, events, day }: { calendars: Calendar[]
       <p>Bezoekers zien alleen bezette tijden in één kleur. De link gebruikt je gekozen periode, dagen en agenda’s en toont een momentopname.</p>
       {!cloud && <p>Deze lokale link werkt op deze computer zolang de agenda-app draait.</p>}
         <div className="wrap">
+
           <div className="share-period-field"><span>Te delen periode</span>
         <details className="share-period">
           <summary className="control"><CalendarDays aria-hidden="true" /><span>{from && to ? format(from, { day: 'numeric', month: 'short' }) + (to !== from ? ' – ' + format(to, { day: 'numeric', month: 'short' }) : '') : 'Kies datums'}</span><ChevronDown aria-hidden="true" /></summary>
@@ -353,13 +361,24 @@ export function Availability({ calendars, events, day }: { calendars: Calendar[]
           </div>
         </details>
           </div>
-          <label>Link verloopt na<select value={lifetime} onChange={e => setLifetime(Number(e.target.value))}><option value={1}>1 dag</option><option value={7}>7 dagen</option><option value={30}>30 dagen</option></select></label>
-          <button className="primary row" disabled={saving || !rows.length || !included.length} onClick={publish}><Link2 />Link aanmaken</button>
+          <label>Link verloopt na<select value={lifetime} onChange={e => setLifetime(Number(e.target.value))}><option value={1}>1 dag</option><option value={7}>7 dagen</option><option value={30}>30 dagen</option><option value={365}>1 jaar</option></select></label>
+          <button className="primary row" disabled={saving || !rows.length || !included.length} onClick={() => { setStatus(''); setLinkName(''); nameDialog.current?.showModal(); }}><Link2 />Link aanmaken</button>
         </div>
+      <dialog className="card dialog link-name-dialog" ref={nameDialog} aria-labelledby="link-name-title" onCancel={event => { if (saving) event.preventDefault(); }}>
+        <form className="form-grid" onSubmit={event => { event.preventDefault(); void publish(); }}>
+          <h2 id="link-name-title">Geef je link een naam</h2>
+          <label>Naam van de link<input type="text" autoFocus required maxLength={80} placeholder="Bijv. Projectgroep" value={linkName} onChange={event => setLinkName(event.target.value)} /></label>
+          {status && <p role="status">{status}</p>}
+          <div className="dialog-actions">
+            <button className="control" type="button" disabled={saving} onClick={() => nameDialog.current?.close()}>Annuleren</button>
+            <button className="primary" type="submit" disabled={saving || !linkName.trim()}>{saving ? 'Aanmaken…' : 'Link aanmaken'}</button>
+          </div>
+        </form>
+      </dialog>
         {links.map(link => <div className="availability-link-row" key={link.token}>
-          <input aria-label="Agendalink" readOnly value={shareUrl(link.token)} onFocus={e => e.target.select()} />
-          <button className="control" onClick={() => copy(shareUrl(link.token))}>Kopiëren</button>
-          <button className="danger" onClick={() => revoke(link)}>Intrekken</button>
+          <div className="availability-link-label"><strong title={link.name || 'Naamloze link'}>{link.name || 'Naamloze link'}</strong><small><span className="link-expiry-prefix">Geldig </span>tot {new Date(link.expires_at).toLocaleDateString('nl-NL', { day: 'numeric', month: 'short', year: 'numeric' })}</small></div>
+          <button className="control link-row-action" title="Kopiëren" aria-label="Link kopiëren" onClick={() => copy(shareUrl(link.token))}><Copy aria-hidden="true" /><span>Kopiëren</span></button>
+          <button className="danger link-row-action" title="Intrekken" aria-label="Link intrekken" onClick={() => revoke(link)}><Unlink2 aria-hidden="true" /><span>Intrekken</span></button>
         </div>)}
       <p role="status">{status}</p>
     </section>

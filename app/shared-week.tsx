@@ -44,7 +44,7 @@ function ProposalTime({ label, value, onChange }: { label: string; value: string
   </div>;
 }
 
-export function SharedWeek({ rows, token }: { rows: SharedDay[]; token: string }) {
+export function SharedWeek({ rows, token, friendName, common }: { rows: SharedDay[]; token: string; friendName?: string; common?: SharedDay[] }) {
   const first = monday(rows[0].day);
   const last = monday(rows[rows.length - 1].day);
   const [week, setWeek] = useState(first);
@@ -68,13 +68,33 @@ export function SharedWeek({ rows, token }: { rows: SharedDay[]; token: string }
     return start < item.end && end > item.start;
   });
 
+  const commonByDay = new Map(common?.map(row => [row.day, row.slots]));
+  const suggestions = common?.flatMap(row => row.slots.map(slot => ({ day: row.day, slot }))).slice(0, 3) || [];
+  const outsideCommon = (item: Draft) => !!friendName && !commonByDay.get(item.day)?.some(slot => {
+    const [start, end] = slot.split(' – ');
+    return item.start >= start && item.end <= end;
+  });
+  function begin(item: Draft) {
+    setStatus('');
+    setMessage('');
+    setDraft(item);
+  }
+
   useEffect(() => {
     const subscription = cloud?.auth.onAuthStateChange((_event, session) => setSignedIn(!!session)).data.subscription;
     return () => subscription?.unsubscribe();
   }, []);
 
-  return <main className="shared-calendar">
-    <header><h1>Gedeelde agenda</h1><span><i /> Bezet</span></header>
+  return <section className={friendName ? "card form-card friend-week" : "shared-calendar"}>
+    <header>{friendName ? <h2>Agenda van {friendName}</h2> : <h1>Gedeelde agenda</h1>}<span><i /> Bezet</span></header>
+    {common && <section className="friends-shortcuts" aria-label="Samen vrij">
+      <h2>Samen vrij</h2>
+      {suggestions.length ? <div className="wrap">{suggestions.map(({ day, slot }) => <button className="control" key={day + slot}
+        onClick={() => {
+          const [start, end] = slot.split(' – ');
+          begin({ day, start, end: time(Math.min(minutes(end), minutes(start) + 30)) });
+        }}>{format(day, { weekday: 'short', day: 'numeric', month: 'short' })} · {slot}</button>)}</div> : <p>Geen gezamenlijke vrije blokken gevonden.</p>}
+    </section>}
     <div className="row shared-week-controls">
       <button className="control" aria-label="Vorige week" disabled={currentWeek <= first} onClick={() => setWeek(add(currentWeek, -7))}><ChevronLeft /></button>
       <strong>{format(currentWeek, { day: 'numeric', month: 'short' })} – {format(add(currentWeek, 6), { day: 'numeric', month: 'long', year: 'numeric' })}</strong>
@@ -86,14 +106,18 @@ export function SharedWeek({ rows, token }: { rows: SharedDay[]; token: string }
         {days.map(({ day, label }) => <div className="grid-header" key={day}>{label} {Number(day.slice(-2))}</div>)}
         <div className="shared-time-labels">{Array.from({ length: endHour - startHour }, (_, i) => <span key={i}>{time((startHour + i) * 60)}</span>)}</div>
         {days.map(({ day }) => <div className="day-column shared-day" key={day} data-shared={byDay.has(day)}>
-          {byDay.has(day) && <button className="shared-add" type="button" aria-label={'Voorstel doen op ' + day} onClick={event => {
+          {byDay.has(day) && (!friendName || common) && <button className="shared-add" type="button" aria-label={'Voorstel doen op ' + day} onClick={event => {
             const rect = event.currentTarget.getBoundingClientRect();
             const offset = event.detail ? Math.floor(((event.clientY - rect.top) / rect.height) * span / 15) * 15 : 60;
             const start = Math.min(1425, startHour * 60 + Math.max(0, Math.min(span - 15, offset)));
             const item = { day, start: time(start), end: time(Math.min(1439, start + 30)) };
-            if (overlaps(item) && event.detail) return;
-            setStatus(''); setMessage(''); setDraft(item);
+            if ((overlaps(item) || outsideCommon(item)) && event.detail) return;
+            begin(item);
           }} />}
+          {commonByDay.get(day)?.map(slot => {
+            const [start, end] = slot.split(' – ');
+            return <div className="friend-free-block" key={slot} style={{ top: top(start) + '%', height: (top(end) - top(start)) + '%' }} />;
+          })}
           {byDay.get(day)?.map(slot => {
             const [start, end] = slot.split(' – ');
             return <div className="shared-week-busy" key={slot} style={{ top: top(start) + '%', height: (top(end) - top(start)) + '%' }}>{slot}</div>;
@@ -121,11 +145,12 @@ export function SharedWeek({ rows, token }: { rows: SharedDay[]; token: string }
           <div className="two"><ProposalTime label="Begintijd" value={draft.start} onChange={start => setDraft({ ...draft, start })} /><ProposalTime label="Eindtijd" value={draft.end} onChange={end => setDraft({ ...draft, end })} /></div>
           {!cloud && <label>Je naam<input required maxLength={60} value={sender} onChange={event => setSender(event.target.value)} /></label>}
           <label>Bericht (optioneel)<textarea value={message} maxLength={500} onChange={event => setMessage(event.target.value)} /></label>
+          {outsideCommon(draft) && <p>Kies een tijdstip waarop jullie allebei vrij zijn.</p>}
           {overlaps(draft) && <p>Dit tijdslot overlapt een bezet blok.</p>}
-          <button className="primary" disabled={sending || status === 'Voorstel verstuurd.' || draft.start >= draft.end || overlaps(draft)}>Versturen</button>
+          <button className="primary" disabled={sending || status === 'Voorstel verstuurd.' || draft.start >= draft.end || overlaps(draft) || outsideCommon(draft)}>Versturen</button>
         </form>}
         <p role="status">{status}</p>
       </section>
     </div>}
-  </main>;
+  </section>;
 }

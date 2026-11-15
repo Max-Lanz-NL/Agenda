@@ -23,6 +23,12 @@ Zonder Supabase kun je op localhost of 127.0.0.1 direct een lokale agendalink aa
 
 ## Afspraakvoorstellen
 
-Pas beide SQL-migraties toe en vul de Supabase-variabelen in. Maak daarna met het eerste account een nieuwe agendalink aan. Open die link als tweede account in een ander browserprofiel. Klik op een vrije tijd om een voorstel te sturen. Accepteer of wijs het voorstel af via Meldingen bij het eerste account. Geaccepteerde voorstellen verschijnen als gedeelde afspraken bij beide accounts op Home.
+Pas alle SQL-migraties toe en vul de Supabase-variabelen in. Maak daarna met het eerste account een nieuwe agendalink aan. Open die link als tweede account in een ander browserprofiel. Klik op een vrije tijd om een voorstel te sturen. Accepteer of wijs het voorstel af via Meldingen bij het eerste account. Geaccepteerde voorstellen verschijnen als gedeelde afspraken bij beide accounts op Home.
 
 Zonder Supabase werken afspraakvoorstellen op dezelfde computer via twee aparte browserprofielen. Maak in het eerste profiel een nieuwe agendalink aan, open die in het tweede profiel en vul bij het voorstellen je naam in. Het eerste profiel ontvangt het voorstel bij Meldingen. Eerder aangemaakte lokale links blijven leesbaar. Maak voor voorstellen een nieuwe link aan. De app controleert bij het accepteren de geopende eigenaarsagenda, bestaande geaccepteerde voorstellen en de opgeslagen Supabase-back-ups. Lokale wijzigingen in andere browsers worden pas meegenomen wanneer ze als back-up zijn opgeslagen of bij het accepteren in de geopende agenda staan.
+
+## Vrienden lokaal testen
+
+Open de agenda in twee gescheiden browserprofielen op dezelfde computer. Maak in Vrienden een uitnodiging, kopieer de link en accepteer die in het tweede profiel. Kies in beide profielen welke agenda’s meetellen en druk op Delen starten. Samen vrij toont tijdsblokken van minstens 30 minuten tussen 08:00 en 22:00. Vanuit zo'n blok kun je een voorstel versturen en via het belletje accepteren.
+
+Delen staat na het toevoegen voor beide profielen uit. Per vriend worden alleen bezette tijdsblokken voor de komende 35 dagen opgeslagen. Deze vriendenfunctie gebruikt de lokale server en is nog niet beschikbaar in Supabase-modus.
