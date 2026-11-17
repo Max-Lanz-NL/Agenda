@@ -72,3 +72,9 @@ export function busyBlocks(events: Event[], day: string) {
   }
   return merged.map(({ start, end }) => time(start) + ' – ' + time(end));
 }
+
+export function nextEvents(events: Event[], today: string, clock: string) {
+  return events
+    .filter(event => event.day > today || (event.day === today && event.end > clock))
+    .sort((a, b) => (a.day + a.start).localeCompare(b.day + b.start));
+}

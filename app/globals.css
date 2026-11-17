@@ -445,3 +445,41 @@ input[type=checkbox]{accent-color:var(--accent)}
   html { scrollbar-width: none; }
   html::-webkit-scrollbar { display: none; }
 }
+
+
+/* Agenda controls and timeline interactions */
+:root { --accent: #6241d5; --soft: #eee9fc; --shadow: 0 1px 4px #3120520b; }
+:root.dark { --accent: #9b80ff; --soft: #3a2a64; --shadow: none; }
+.sidebar { background: var(--side); }
+.shell.navigation-collapsed { grid-template-columns: 64px minmax(0, 1fr); }
+.navigation-collapsed .sidebar { padding-inline: 8px; }
+.navigation-collapsed .brand { margin-inline: auto; }
+.navigation-collapsed :is(.brand>b, .nav>span, .nav>small, .profile>span:nth-child(2), .profile>svg) { display: none; }
+.navigation-collapsed :is(.nav, .profile) { justify-content: center; padding-inline: 0; }
+.dashboard.details-collapsed { grid-template-columns: minmax(0, 1fr); }
+.right-panel[hidden] { display: none; }
+.sidebar-toggle[aria-expanded="false"] { color: var(--accent); }
+.event { padding: 0; cursor: default; }
+.event-main { width: 100%; height: 100%; padding: 5px 7px; text-align: left; overflow: hidden; display: flex; flex-direction: column; }
+.event-editable .event-main { padding-right: 24px; padding-bottom: 10px; }
+.event-main:focus-visible, .event-handle:focus-visible { outline-offset: -2px; }
+.event-handle { position: absolute; display: grid; place-items: center; touch-action: none; color: var(--ink); background: var(--soft); }
+.event-handle.move { top: 0; right: 0; width: 22px; height: min(100%, 28px); cursor: grab; }
+.event-handle.resize { bottom: 0; left: 0; width: 100%; height: min(100%, 10px); cursor: ns-resize; font-size: 10px; line-height: 1; }
+.event-preview { position: absolute; inset-inline: 4px; z-index: 3; pointer-events: none; padding-inline: 4px; border: 2px dashed var(--accent); background: var(--soft); border-radius: 8px; font-size: .75rem; overflow: hidden; }
+.school-details { position: absolute; top: 0; left: 4px; z-index: 5; width: min(285px, 100%); min-width: min(175px, 100%); max-height: 100%; overflow: auto; background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 8px; box-shadow: var(--shadow); cursor: auto; overflow-wrap: anywhere; }
+.school-details > div > button { display: grid; width: 100%; text-align: left; border-top: 1px solid var(--line); padding-block: 6px; }
+.school-details small { display: block; color: var(--muted); }
+@media (pointer: coarse) {
+  .event-handle.move { width: 28px; }
+  .event-handle.resize { height: min(100%, 18px); width: calc(100% - 28px); }
+}
+@media (max-width: 650px) {
+  .navigation-collapsed .sidebar { display: none; }
+  .navigation-collapsed main { padding-bottom: 18px; }
+  .toolbar { flex-wrap: wrap; }
+}
+
+.school-details { width: clamp(175px, 22vw, 285px); min-width: 0; }
+.day-column:nth-last-of-type(-n+2) .school-details { left: auto; right: 4px; }
+.calendar.single .school-details { left: 4px; right: auto; width: min(285px, calc(100% - 8px)); }

@@ -1,8 +1,8 @@
 'use client';
 
-import { useEffect, useState, type FormEvent, type MouseEvent } from 'react';
-import { ArrowRight, Bell, Calendar, CalendarCheck, CalendarDays, ChevronDown, ChevronLeft, ChevronRight, CircleCheck, ClipboardCheck, Dumbbell, Flag, GraduationCap, Grid3X3, House, Link2, List, Plus, Search, Settings, UserPlus, Users, Utensils, X } from 'lucide-react';
-import { add, changeMonth, date, defaults, demo, eventNote, format, initialDay, key, labels, minutes, monday, monthStart, time, type Event } from '../lib/calendar';
+import { useEffect, useRef, useState, type FormEvent, type PointerEvent } from 'react';
+import { ArrowRight, Bell, Calendar, CalendarCheck, CalendarDays, ChevronDown, ChevronLeft, ChevronRight, CircleCheck, ClipboardCheck, Dumbbell, Flag, GraduationCap, Grid3X3, House, Link2, List, PanelLeft, PanelRight, Plus, Search, Settings, UserPlus, Users, Utensils, X } from 'lucide-react';
+import { add, changeMonth, date, defaults, demo, eventNote, format, initialDay, key, labels, minutes, monday, monthStart, nextEvents, time, type Event } from '../lib/calendar';
 import { Availability, SettingsPanel, Calendars, PublicAvailability, defaultProfileName, type Preferences } from './panels';
 
 import { Friends } from './friends';
@@ -53,6 +53,11 @@ function Month({ selected, month, select, shift, events, calendars, groupSchool 
 }
 
 export default function Agenda() {
+  const [navigationCollapsed, setNavigationCollapsed] = useState(false);
+  const [detailsCollapsed, setDetailsCollapsed] = useState(false);
+  const [expandedSchool, setExpandedSchool] = useState<string | null>(null);
+  const [preview, setPreview] = useState<Event | null>(null);
+  const gesture = useRef<{ event: Event; mode: 'move' | 'resize'; y: number; offset: number } | null>(null);
   const [page, setPage] = useState('Home');
   const [view, setView] = useState('Week');
   const [day, setDay] = useState(initialDay);
@@ -135,9 +140,8 @@ export default function Agenda() {
   const startWeek = monday(day);
   const days = view === 'Dag' ? [day] : Array.from({ length: 7 }, (_, i) => add(startWeek, i));
   const week = Math.floor((Math.round((+date(add(startWeek, 3)) - +date(startWeek.slice(0, 4) + '-01-01')) / 86400000) + 7) / 7);
-  const upcomingFrom = today && today > day ? today : day;
   const clock = now ? time(now.getHours() * 60 + now.getMinutes()) : '00:00';
-  const upcoming = visible.filter(event => event.day >= upcomingFrom && (event.day !== today || event.end > clock));
+  const upcoming = nextEvents(visible, today, clock);
   const schoolDays = new Map<string, Event[]>();
   for (const event of upcoming) {
     if (preferences.group && event.calendar === 'school') {
@@ -184,24 +188,70 @@ export default function Agenda() {
     return 8 * 60 + Math.max(0, Math.min(885, Math.floor(((clientY - range.top) / range.height) * 900 / 15) * 15));
   }
 
+  function startGesture(e: PointerEvent<HTMLButtonElement>, event: Event, mode: 'move' | 'resize') {
+    if (!e.isPrimary || e.button !== 0) return;
+    const column = e.currentTarget.closest<HTMLElement>('.day-column');
+    if (!column) return;
+    gesture.current = { event, mode, y: e.clientY, offset: gridMinute(e.clientY, column) - minutes(event.start) };
+    e.currentTarget.setPointerCapture(e.pointerId);
+  }
+
+  function gesturePlacement(e: PointerEvent<HTMLButtonElement>) {
+    const active = gesture.current;
+    if (!active) return null;
+    const { event, mode, offset, y } = active;
+    const origin = e.currentTarget.closest<HTMLElement>('.day-column');
+    const column = mode === 'resize' ? origin : document.elementFromPoint(e.clientX, e.clientY)?.closest<HTMLElement>('.day-column');
+    const day = column?.dataset.day;
+    if (!column || !day || (day === event.day && Math.abs(e.clientY - y) < 4)) return null;
+    const slot = gridMinute(e.clientY, column);
+    const start = minutes(event.start);
+    const duration = minutes(event.end) - start;
+    if (mode === 'resize') {
+      const delta = Math.round((e.clientY - y) * 60 / (column.getBoundingClientRect().height / 15) / 15) * 15;
+      return { ...event, end: time(Math.min(1439, Math.max(start + 15, minutes(event.end) + delta))) };
+    }
+    const newStart = Math.max(0, Math.min(1439 - duration, slot - offset));
+    return { ...event, day, start: time(newStart), end: time(newStart + duration) };
+  }
+
+  function finishGesture(e: PointerEvent<HTMLButtonElement>) {
+    const placement = gesturePlacement(e);
+    gesture.current = null;
+    setPreview(null);
+    if (placement) setEvents(current => current.map(item => item.id === placement.id ? placement : item));
+  }
+
+  function cancelGesture() {
+    gesture.current = null;
+    setPreview(null);
+  }
+
   function drawEvent(event: Event, group?: Event[]) {
     const calendar = calendars.find(item => item.id === event.calendar) || defaults[2];
     const Icon = resolveCalendarIcon(calendars.find(item => item.id === event.calendar)?.icon) || eventIcon(event);
     const from = Math.max(minutes(event.start), 480);
     const to = Math.min(minutes(event.end), 1380);
     if (to <= from) return null;
-    return <button key={event.id} className="event" style={{ top: (from - 480) / 9 + '%', height: (to - from) / 9 + '%', '--event-color': calendar.color, '--event-bg': calendar.background } as React.CSSProperties}
-      draggable={!group && !event.source} onDragStart={e => e.dataTransfer.setData('text/plain', event.id)}
-      onClick={e => { e.stopPropagation(); if (group) { setEdit(null); setLessons(group); } else show(event); }}>
-      <strong><Icon />{event.title}</strong><span>{event.start} – {event.end}</span>{group && <ChevronDown className="event-expand" />}
-    </button>;
+    const editable = !group && !event.source;
+    return <div key={event.id} className={'event' + (editable ? ' event-editable' : '')} style={{ top: (from - 480) / 9 + '%', height: (to - from) / 9 + '%', '--event-color': calendar.color } as React.CSSProperties} onClick={e => e.stopPropagation()}>
+      <button type="button" className="event-main" aria-expanded={group ? expandedSchool === event.day : undefined} onClick={() => group ? setExpandedSchool(current => current === event.day ? null : event.day) : show(event)}>
+        <strong><Icon />{event.title}</strong><span>{event.start} – {event.end}</span>{group && <ChevronDown className="event-expand" />}
+      </button>
+      {editable && (['move', 'resize'] as const).map(mode => <button key={mode} type="button" className={'event-handle ' + mode}
+        aria-label={(mode === 'move' ? 'Verplaats ' : 'Wijzig de duur van ') + event.title}
+        onPointerDown={e => startGesture(e, event, mode)}
+        onPointerMove={e => { if (gesture.current) setPreview(gesturePlacement(e)); }}
+        onPointerUp={finishGesture} onPointerCancel={cancelGesture} onLostPointerCapture={cancelGesture}
+        onClick={e => { if (e.detail === 0) show(event); }}>{mode === 'move' ? '⠿' : '━'}</button>)}
+    </div>;
   }
 
   if (!ready) return <main className="public-page"><p role="status">Agenda laden…</p></main>;
   if (publicToken) return <PublicAvailability token={publicToken} />;
 
-  return <div className="shell">
-    <aside className="sidebar">
+  return <div className={navigationCollapsed ? "shell navigation-collapsed" : "shell"}>
+    <aside className="sidebar" id="agenda-navigation">
       <button className="brand" onClick={() => setPage('Home')}><span><CalendarCheck /></span><b>Agenda</b></button>
       <nav>{navigation.map(({ title, icon: Icon }) => <button title={title} aria-label={title} data-mobile-label={title === "Beschikbaarheid" ? "Vrije tijd" : title} aria-current={page === title ? "page" : undefined} key={title} className={page === title ? 'nav active' : 'nav'} onClick={() => { setPage(title); setMenu(''); }}><Icon /><span>{title}</span>{title === 'Taken' && tasks.some(task => !task.done) && <small>{tasks.filter(task => !task.done).length}</small>}</button>)}</nav>
       <div className="sidebar-bottom">
@@ -213,6 +263,7 @@ export default function Agenda() {
     <main>
       <header className="topbar">
         <div className="period row">
+          <button className="control sidebar-toggle" aria-label="Navigatie" aria-controls="agenda-navigation" aria-expanded={!navigationCollapsed} onClick={() => { setNavigationCollapsed(value => !value); setMenu(''); }}><PanelLeft /></button>
           {page === 'Home' && <><button className="control" aria-label="Vorige periode" onClick={() => shift(-1)}><ChevronLeft /></button><button className="control" aria-label="Volgende periode" onClick={() => shift(1)}><ChevronRight /></button></>}
           <h1>{page === 'Home' ? format(day, { month: 'long', year: 'numeric' }) : page}</h1>
           {page === 'Home' && <button aria-label="Kies datum" onClick={() => setMenu(menu === 'date' ? '' : 'date')}><ChevronDown /></button>}
@@ -240,10 +291,10 @@ export default function Agenda() {
             : <button className="primary row" onClick={() => create()}><Plus /> Maken</button>}
         </div>
       </header>
-      {page === 'Home' ? <div className="dashboard">
+      {page === 'Home' ? <div className={detailsCollapsed ? "dashboard details-collapsed" : "dashboard"}>
         <section className="planner">
           <div className="toolbar"><div className="tabs">{views.map(({ title, icon: Icon }) => <button key={title} aria-pressed={view === title} className={view === title ? 'selected' : ''} onClick={() => setView(title)}><Icon /><span>{title}</span></button>)}</div>
-            <div className="row toolbar-nav"><button className="control today" onClick={() => selectDay(key(new Date()))}>Vandaag</button><button className="control" aria-label="Vorige" onClick={() => shift(-1)}><ChevronLeft /></button><button className="control" aria-label="Volgende" onClick={() => shift(1)}><ChevronRight /></button></div>
+            <div className="row toolbar-nav"><button className="control sidebar-toggle" aria-label="Zijpaneel" aria-controls="agenda-details" aria-expanded={!detailsCollapsed} onClick={() => setDetailsCollapsed(value => !value)}><PanelRight /></button><button className="control today" onClick={() => selectDay(key(new Date()))}>Vandaag</button><button className="control" aria-label="Vorige" onClick={() => shift(-1)}><ChevronLeft /></button><button className="control" aria-label="Volgende" onClick={() => shift(1)}><ChevronRight /></button></div>
           </div>
           {view === 'Maand' ? <Month selected={day} month={day} select={d => { selectDay(d); setView('Dag'); }} events={visible} calendars={calendars} groupSchool={preferences.group} large /> : view === 'Lijst' ? <div className="card list-view">{selectedDayEvents.length ? selectedDayEvents.map(event => <button key={event.id} onClick={() => show(event)}><b>{event.title}</b><span>{format(event.day, { weekday: 'short', day: 'numeric', month: 'short' })} · {event.start} – {event.end}</span></button>) : <p>Geen afspraken op deze datum.</p>}</div> : <div className="calendar-scroll" role="region" aria-label={view + "kalender"} tabIndex={0}>
             <div className={'calendar ' + (view === 'Dag' ? 'single' : '')} style={{ '--columns': days.length } as React.CSSProperties}>
@@ -256,15 +307,26 @@ export default function Agenda() {
                 const other = preferences.group ? dayEvents.filter(event => event.calendar !== 'school') : dayEvents;
                 const clock = now ? now.getHours() * 60 + now.getMinutes() : 0;
                 const marker = value === today && clock >= 480 && clock < 1380 ? clock : value === initialDay && day.startsWith('2025-01') ? 1102 : null;
-                return <div key={value} className="day-column" onClick={(e: MouseEvent<HTMLDivElement>) => create(value, time(gridMinute(e.clientY, e.currentTarget)))} onDragOver={e => e.preventDefault()} onDrop={e => {
-                  e.preventDefault();
-                  const item = events.find(event => event.id === e.dataTransfer.getData('text/plain') && !event.source);
-                  if (!item) return;
-                  const duration = minutes(item.end) - minutes(item.start);
-                  const start = Math.min(1439 - duration, gridMinute(e.clientY, e.currentTarget));
-                  setEvents(current => current.map(event => event.id === item.id ? { ...event, day: value, start: time(start), end: time(start + duration) } : event));
+                const expanded = expandedSchool === value;
+                const draft = preview?.day === value ? preview : null;
+                const draftStart = draft ? Math.max(480, minutes(draft.start)) : 0;
+                const draftEnd = draft ? Math.min(1380, minutes(draft.end)) : 0;
+                return <div key={value} data-day={value} className="day-column" onClick={e => {
+                  const slot = time(gridMinute(e.clientY, e.currentTarget));
+                  if (!dayEvents.some(event => event.start <= slot && slot < event.end)) create(value, slot);
                 }}>
                   {preferences.group && school.length > 0 && drawEvent({ ...school[0], title: 'School', end: school.reduce((end, item) => item.end > end ? item.end : end, school[0].end) }, school)}
+                  {preferences.group && expanded && school.length > 0 && <div className="school-details" onClick={e => e.stopPropagation()}>
+                    <button className="text-button" onClick={() => setExpandedSchool(null)}>School inklappen</button>
+                    {school.map((lesson, index) => {
+                      const previousEnd = school.slice(0, index).reduce((latest, item) => item.end > latest ? item.end : latest, '');
+                      return <div key={lesson.id}>
+                        {previousEnd && previousEnd < lesson.start && <small>Tussenuur · {previousEnd} – {lesson.start}</small>}
+                        <button onClick={() => show(lesson)}><b>{lesson.title}</b><small>{lesson.start} – {lesson.end}{lesson.location ? ' · ' + lesson.location : ''}</small>{eventNote(lesson) && <small>{eventNote(lesson)}</small>}</button>
+                      </div>;
+                    })}
+                  </div>}
+                  {draft && draftEnd > draftStart && <div className="event-preview" aria-hidden="true" style={{ top: (draftStart - 480) / 9 + '%', height: (draftEnd - draftStart) / 9 + '%' }}>{draft.start} – {draft.end}</div>}
                   {other.map(event => drawEvent(event))}
                   {marker !== null && <div className="time-marker" style={{ top: (marker - 480) / 9 + '%' }} />}
                 </div>;
@@ -272,10 +334,10 @@ export default function Agenda() {
             </div>
           </div>}
         </section>
-        <aside className="right-panel">
+        <aside id="agenda-details" className="right-panel" hidden={detailsCollapsed}>
           <Month selected={day} month={mini} select={selectDay} shift={n => setMini(changeMonth(mini, n))} events={visible} />
           <section className="card upcoming"><div className="card-heading"><h2>Aankomende events</h2><button className="text-button" onClick={() => { setView('Lijst'); selectDay(upcomingCards[0]?.event.day || day); }}>Naar lijst <ArrowRight /></button></div>
-            {upcomingCards.length ? upcomingCards.map(({ event, lessons }) => { const Icon = resolveCalendarIcon(calendars.find(item => item.id === event.calendar)?.icon) || eventIcon(event); const calendar = calendars.find(item => item.id === event.calendar)!; return <button key={event.id} className="upcoming-item" onClick={() => lessons ? setLessons(lessons) : show(event)}><span className="event-icon" style={{ color: calendar.color, background: calendar.background }}><Icon /></span><span><b>{event.title}</b><small>{format(event.day, { weekday: 'short', day: 'numeric', month: 'short' })}, {event.start} – {event.end}</small></span></button>; }) : <p>Geen afspraken deze periode.</p>}
+            {upcomingCards.length ? upcomingCards.map(({ event, lessons }) => { const Icon = resolveCalendarIcon(calendars.find(item => item.id === event.calendar)?.icon) || eventIcon(event); const calendar = calendars.find(item => item.id === event.calendar)!; return <button key={event.id} className="upcoming-item" onClick={() => lessons ? setLessons(lessons) : show(event)}><span className="event-icon" style={{ color: calendar.color, background: calendar.background }}><Icon /></span><span><b>{event.title}</b><small>{format(event.day, { weekday: 'short', day: 'numeric', month: 'short' })}, {event.start} – {event.end}</small></span></button>; }) : <p>Geen komende afspraken.</p>}
           </section>
           <button className="share-card" onClick={() => setPage('Beschikbaarheid')}><span className="share-icon"><Link2 /></span><span><b>Beschikbaarheid delen</b><small>Deel je vrije tijden met een link</small></span><ChevronRight /></button>
         </aside>
