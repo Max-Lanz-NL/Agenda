@@ -1,5 +1,13 @@
 @import "tailwindcss";
 
+.sync-banner { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 16px; padding: 10px 12px; border: 1px solid var(--line); border-radius: 10px; background: var(--surface); }
+.sync-banner p { font-size: .8rem; }
+.sync-error, .sync-conflict, .sync-offline { border-color: #a76b17; }
+.sync-banner .wrap { justify-content: flex-end; }
+.import-backup { display: grid; gap: 8px; }
+.import-backup input { max-width: 100%; }
+@media (max-width: 650px) { .sync-banner { align-items: flex-start; flex-direction: column; } }
+
 :root{color-scheme:light;--ink:#11172b;--muted:#414c68;--line:#e1e5f1;--surface:#fff;--canvas:#fafaff;--accent:#6d4aff;--soft:#eee9ff;--side:#f5f3fd;--shadow:0 3px 8px #26355d0a;font-family:Inter,"Segoe UI",sans-serif}
 :root.dark{color-scheme:dark;--ink:#f1efff;--muted:#c3bedb;--line:#34334c;--surface:#212136;--canvas:#19192b;--accent:#9b80ff;--soft:#3a2a64;--side:#201b35;--shadow:none}
 *{box-sizing:border-box}

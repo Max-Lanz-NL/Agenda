@@ -3,19 +3,21 @@
 ## Lokaal starten
 
 Vereist Node.js 24. Voer `npm ci` en `npm run dev` uit en open http://localhost:3000.
-De lokale demo opent in de referentieweek van januari 2025. Gebruik **Vandaag** voor de actuele datum.
-Met `npm test` controleer je de kalenderlogica en met `npm run build` de productiebuild.
+De agenda opent op de actuele datum. Bestaande browsergegevens blijven beschikbaar.
+Met `npm test` controleer je de kalender- en synchronisatielogica. `npm run build` voert deze tests uit en maakt de productiebuild.
 
 ## Supabase en Vercel
 
-1. Maak een Supabase-project aan en pas de SQL-migratie onder `supabase/migrations` toe.
+1. Maak een Supabase-project aan en pas de SQL-migraties onder `supabase/migrations` in volgorde toe, gevolgd door `supabase/workspace-sync.sql`.
 2. Kopieer `.env.example` naar `.env.local` en vul de URL, publishable key en server-side secret key in. Zet dezelfde variabelen in Vercel.
 3. Stel de Site URL en toegestane omleidings-URL's voor de e-mailinloglink in Supabase in. Gebruik het domein van de app en voor lokale tests http://localhost:3000.
-4. Open **Instellingen** voor inloggen, een back-up maken of een back-up terugzetten. Open **Beschikbaarheid** om een openbare link te maken, te kopiëren of in te trekken. De link bevat een momentopname van de berekende vrije tijden.
+4. Open **Instellingen** om met een e-maillink in te loggen. Gebruik op elk apparaat hetzelfde e-mailadres en hetzelfde app-domein. Kies eenmalig **Lokale agenda toevoegen** om bestaande browserafspraken en taken naar je account over te nemen. Je kunt ook JSON-back-ups downloaden en importeren.
+5. De app slaat wijzigingen lokaal direct op en synchroniseert ze automatisch na ongeveer een seconde. Open apparaten controleren elke 15 seconden en bij terugkeren naar de app op wijzigingen. De opslagstatus staat boven de agenda. Bij verbindingsverlies blijven wijzigingen lokaal bewaard en wordt synchronisatie opnieuw geprobeerd zodra de verbinding terugkomt. Conflicterende wijzigingen aan hetzelfde gegeven vragen een keuze. Verschillende afspraken en velden worden samengevoegd met versiecontrole in de database.
+6. Open **Beschikbaarheid** om een openbare link te maken, te kopiëren of in te trekken. De link bevat een momentopname van de berekende vrije tijden.
 
 ## Afbakening eerste versie
 
-- Afspraken, taken, agendakleuren en weergavevoorkeuren worden lokaal opgeslagen. Supabase ondersteunt handmatige back-up en herstel met toegangsbeleid per eigenaar.
+- Afspraken, taken, agendakleuren en weergavevoorkeuren worden lokaal opgeslagen en na inloggen automatisch met Supabase gesynchroniseerd. Row Level Security beperkt elke gebruiker tot diens eigen werkruimte. Lokale gegevens worden per account gescheiden bewaard.
 - Magister kan afzonderlijke lessen uit een ICS-bestand of via een publiek bereikbare HTTPS- of webcal-feed importeren. Herhalingen, meerdaagse afspraken en automatische synchronisatie zijn nog niet geïmplementeerd.
 - Google, Outlook en iCloud worden als ongeconfigureerde providers weergegeven. De app heeft geen actieve koppeling met deze diensten.
 

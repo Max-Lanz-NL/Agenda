@@ -2,13 +2,14 @@
 
 import { useEffect, useRef, useState, type FormEvent, type PointerEvent } from 'react';
 import { ArrowRight, Bell, Calendar, CalendarCheck, CalendarDays, ChevronDown, ChevronLeft, ChevronRight, CircleCheck, ClipboardCheck, Dumbbell, Flag, GraduationCap, Grid3X3, House, Link2, List, PanelLeft, PanelRight, Plus, Search, Settings, UserPlus, Users, Utensils, X } from 'lucide-react';
-import { add, changeMonth, date, defaults, demo, eventNote, format, initialDay, key, labels, minutes, monday, monthStart, nextEvents, time, type Event } from '../lib/calendar';
-import { Availability, SettingsPanel, Calendars, PublicAvailability, defaultProfileName, type Preferences } from './panels';
+import { add, changeMonth, date, defaults, eventNote, format, initialDay, key, labels, minutes, monday, monthStart, nextEvents, time, type Event } from '../lib/calendar';
+import { Availability, SettingsPanel, Calendars, PublicAvailability, defaultProfileName } from './panels';
 
 import { Friends } from './friends';
 import { resolveCalendarIcon } from '../lib/calendar-icons';
 
 import { cloud, proposalsRequest, type Proposal } from '../lib/proposals';
+import { useWorkspace } from './use-workspace';
 
 const views = [{ title: 'Dag', icon: Calendar }, { title: 'Week', icon: CalendarDays }, { title: 'Maand', icon: Grid3X3 }, { title: 'Lijst', icon: List }];
 const navigation = [{ title: 'Home', icon: House }, { title: "Agenda’s", icon: Calendar }, { title: 'Vrienden', icon: Users }, { title: 'Beschikbaarheid', icon: CalendarCheck }, { title: 'Taken', icon: ClipboardCheck }];
@@ -62,18 +63,16 @@ export default function Agenda() {
   const [view, setView] = useState('Week');
   const [day, setDay] = useState(initialDay);
   const [mini, setMini] = useState(initialDay);
-  const [events, setEvents] = useState(demo);
-  const [calendars, setCalendars] = useState(defaults);
-  const [preferences, setPreferences] = useState<Preferences>({ group: true, dark: false });
+  const sync = useWorkspace();
+  const { events, calendars, preferences, tasks } = sync.data;
+  const { setEvents, setCalendars, setPreferences, setTasks, ready } = sync;
   const profileName = preferences.displayName?.trim() || defaultProfileName;
   const initials = profileName.split(/\s+/).slice(0, 2).map(word => word[0]).join('').toUpperCase();
-  const [tasks, setTasks] = useState([{ title: 'Huiswerk maken', done: false }, { title: 'Boeken meenemen', done: false }, { title: 'Golf reserveren', done: false }]);
   const completedTasks = tasks.filter(task => task.done).length;
   const [query, setQuery] = useState('');
   const [menu, setMenu] = useState('');
   const [edit, setEdit] = useState<Event | null>(null);
   const [lessons, setLessons] = useState<Event[]>([]);
-  const [ready, setReady] = useState(false);
   const [publicToken, setPublicToken] = useState('');
   const [now, setNow] = useState<Date | null>(null);
 
@@ -81,23 +80,18 @@ export default function Agenda() {
     const params = new URLSearchParams(location.search);
     setPublicToken(params.get('vrij') || '');
     if (params.has('vriend')) setPage('Vrienden');
-    try {
-      const stored = JSON.parse(localStorage.getItem('agenda-v1') || '{}');
-      if (stored.events) setEvents(stored.events);
-      if (stored.calendars) setCalendars(stored.calendars);
-      if (stored.preferences) setPreferences(stored.preferences);
-      if (stored.tasks) setTasks(stored.tasks);
-    } catch { /* Use the initial workspace if browser data is invalid. */ }
-    setReady(true);
+    const today = key(new Date());
+    setDay(today);
+    setMini(today);
+    if (params.has('account')) setPage('Instellingen');
     setNow(new Date());
     const interval = setInterval(() => setNow(new Date()), 30000);
     return () => clearInterval(interval);
   }, []);
 
   useEffect(() => {
-    if (ready && !publicToken) localStorage.setItem('agenda-v1', JSON.stringify({ events, calendars, preferences, tasks }));
     document.documentElement.classList.toggle('dark', preferences.dark);
-  }, [ready, publicToken, events, calendars, preferences, tasks]);
+  }, [preferences.dark]);
 
   const [proposals, setProposals] = useState<Proposal[]>([]);
   const [proposalStatus, setProposalStatus] = useState('');
@@ -110,6 +104,10 @@ export default function Agenda() {
   }));
 
   useEffect(() => {
+    setProposals([]);
+    setEdit(null);
+    setLessons([]);
+    setQuery('');
     if (publicToken || !ready) return;
     let active = true;
     const refresh = () => { void proposalsRequest().then(result => {
@@ -118,7 +116,7 @@ export default function Agenda() {
     refresh();
     const poll = setInterval(refresh, 10000);
     return () => { active = false; clearInterval(poll); };
-  }, [publicToken, ready]);
+  }, [publicToken, ready, sync.user?.id]);
 
   async function decide(item: Proposal, accept: boolean) {
     if (accept && [...events, ...booked].some(event => event.day === item.day && event.start < item.end && event.end > item.start)) {
@@ -249,6 +247,7 @@ export default function Agenda() {
 
   if (!ready) return <main className="public-page"><p role="status">Agenda laden…</p></main>;
   if (publicToken) return <PublicAvailability token={publicToken} />;
+  if (!sync.editable) return <main className="public-page"><p role="alert">{sync.message}</p><button className="control" onClick={sync.exportData}>Browsergegevens downloaden</button></main>;
 
   return <div className={navigationCollapsed ? "shell navigation-collapsed" : "shell"}>
     <aside className="sidebar" id="agenda-navigation">
@@ -256,7 +255,7 @@ export default function Agenda() {
       <nav>{navigation.map(({ title, icon: Icon }) => <button title={title} aria-label={title} data-mobile-label={title === "Beschikbaarheid" ? "Vrije tijd" : title} aria-current={page === title ? "page" : undefined} key={title} className={page === title ? 'nav active' : 'nav'} onClick={() => { setPage(title); setMenu(''); }}><Icon /><span>{title}</span>{title === 'Taken' && tasks.some(task => !task.done) && <small>{tasks.filter(task => !task.done).length}</small>}</button>)}</nav>
       <div className="sidebar-bottom">
         <button title="Instellingen" aria-label="Instellingen" data-mobile-label="Instellingen" aria-current={page === "Instellingen" ? "page" : undefined} className={page === 'Instellingen' ? 'nav active' : 'nav'} onClick={() => setPage('Instellingen')}><Settings /><span>Instellingen</span></button>
-        <button className="profile" onClick={() => setMenu(menu === 'account' ? '' : 'account')}><span className="avatar">{initials}</span><span><b>{profileName}</b><small>max@agenda.app</small></span><ChevronDown /></button>
+        <button className="profile" onClick={() => setMenu(menu === 'account' ? '' : 'account')}><span className="avatar">{initials}</span><span><b>{profileName}</b><small>{sync.user?.email || 'Op dit apparaat'}</small></span><ChevronDown /></button>
         {menu === 'account' && <button className="account-popup card" onClick={() => { setPage('Instellingen'); setMenu(''); }}>Accountinstellingen</button>}
       </div>
     </aside>
@@ -291,6 +290,18 @@ export default function Agenda() {
             : <button className="primary row" onClick={() => create()}><Plus /> Maken</button>}
         </div>
       </header>
+      <div className={'sync-banner sync-' + sync.status}>
+        <p role="status">{sync.message}</p>
+        <div className="wrap">
+          {!sync.user && <button className="text-button" onClick={() => setPage('Instellingen')}>Op andere apparaten gebruiken</button>}
+          {(sync.status === 'error' || sync.status === 'offline') && <button className="text-button" onClick={() => void sync.retry()}>Opnieuw proberen</button>}
+          {sync.status === 'conflict' && <>
+            <button className="control" onClick={sync.exportData}>Lokale kopie downloaden</button>
+            <button className="control" onClick={() => void sync.resolve(true)}>Mijn wijzigingen behouden</button>
+            <button className="control" onClick={() => void sync.resolve(false)}>Cloudversie laden</button>
+          </>}
+        </div>
+      </div>
       {page === 'Home' ? <div className={detailsCollapsed ? "dashboard details-collapsed" : "dashboard"}>
         <section className="planner">
           <div className="toolbar"><div className="tabs">{views.map(({ title, icon: Icon }) => <button key={title} aria-pressed={view === title} className={view === title ? 'selected' : ''} onClick={() => setView(title)}><Icon /><span>{title}</span></button>)}</div>
@@ -306,7 +317,7 @@ export default function Agenda() {
                 const school = dayEvents.filter(event => event.calendar === 'school');
                 const other = preferences.group ? dayEvents.filter(event => event.calendar !== 'school') : dayEvents;
                 const clock = now ? now.getHours() * 60 + now.getMinutes() : 0;
-                const marker = value === today && clock >= 480 && clock < 1380 ? clock : value === initialDay && day.startsWith('2025-01') ? 1102 : null;
+                const marker = value === today && clock >= 480 && clock < 1380 ? clock : null;
                 const expanded = expandedSchool === value;
                 const draft = preview?.day === value ? preview : null;
                 const draftStart = draft ? Math.max(480, minutes(draft.start)) : 0;
@@ -341,10 +352,10 @@ export default function Agenda() {
           </section>
           <button className="share-card" onClick={() => setPage('Beschikbaarheid')}><span className="share-icon"><Link2 /></span><span><b>Beschikbaarheid delen</b><small>Deel je vrije tijden met een link</small></span><ChevronRight /></button>
         </aside>
-      </div> : <section className="content">
+      </div> : <section className="content" key={sync.user?.id || 'local'}>
         {page === "Agenda’s" && <Calendars calendars={calendars} setCalendars={setCalendars} setEvents={setEvents} />}
         {page === 'Beschikbaarheid' && <Availability calendars={calendars} events={[...events, ...booked]} day={day} />}
-        {page === 'Instellingen' && <SettingsPanel preferences={preferences} setPreferences={setPreferences} workspace={{ events, calendars, preferences, tasks }} restore={data => { setEvents(data.events); setCalendars(data.calendars); setPreferences(data.preferences); setTasks(data.tasks); }} />}
+        {page === 'Instellingen' && <SettingsPanel preferences={preferences} setPreferences={setPreferences} sync={sync} />}
 
         {page === 'Taken' && <div className="task-board">
           {tasks.length > 0 && <div className="card task-progress">
@@ -363,13 +374,13 @@ export default function Agenda() {
                 {!done && <form className="row task-form" onSubmit={event => {
                   event.preventDefault();
                   const title = String(new FormData(event.currentTarget).get('task')).trim();
-                  if (title) setTasks(current => [...current, { title, done: false }]);
+                  if (title) setTasks(current => [...current, { id: crypto.randomUUID(), title, done: false }]);
                   event.currentTarget.reset();
                 }}>
                   <input name="task" aria-label="Nieuwe taak" placeholder="Nieuwe taak" required />
                   <button className="primary row"><Plus aria-hidden="true" />Toevoegen</button>
                 </form>}
-                {count > 0 ? <div className="task-list">{tasks.map((task, i) => task.done === done && <label className="check" key={i}>
+                {count > 0 ? <div className="task-list">{tasks.map((task, i) => task.done === done && <label className="check" key={task.id}>
                   <input type="checkbox" checked={task.done} onChange={event => setTasks(current => current.map((item, j) => i === j ? { ...item, done: event.target.checked } : item))} />
                   <span>{task.title}</span>
                 </label>)}</div> : <p className="task-empty">{done ? 'Afgevinkte taken verschijnen hier.' : 'Je hebt geen open taken.'}</p>}

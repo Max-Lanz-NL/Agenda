@@ -8,39 +8,19 @@ import ICAL from 'ical.js';
 import { add, busyBlocks, changeMonth, defaults, format, freeBlocks, key, labels, minutes, monday, monthStart, type Event } from '../lib/calendar';
 
 import { calendarIcons, resolveCalendarIcon } from '../lib/calendar-icons';
+import { AccountPanel } from './account-panel';
+import type { useWorkspace } from './use-workspace';
+import type { Preferences } from '../lib/workspace';
+export type { Preferences } from '../lib/workspace';
 
 type Calendar = typeof defaults[number];
-export const defaultProfileName = 'Max Witte';
-export type Preferences = { group: boolean; dark: boolean; displayName?: string };
-type Workspace = { events: Event[]; calendars: Calendar[]; preferences: Preferences; tasks: { title: string; done: boolean }[] };
-export function SettingsPanel({ preferences, setPreferences, workspace, restore }: { preferences: Preferences; setPreferences: Dispatch<SetStateAction<Preferences>>; workspace: Workspace; restore: (data: Workspace) => void }) {
-  const [email, setEmail] = useState('');
-  const [user, setUser] = useState('');
-  const [status, setStatus] = useState('');
-  useEffect(() => {
-    const subscription = cloud?.auth.onAuthStateChange((_event, session) => setUser(session?.user.email || '')).data.subscription;
-    return () => subscription?.unsubscribe();
-  }, []);
-  async function backup(load: boolean) {
-    if (!cloud) return;
-    const { data } = await cloud.auth.getUser();
-    if (!data.user) return;
-    if (load) {
-      const { data: saved, error } = await cloud.from('workspaces').select('data').eq('user_id', data.user.id).maybeSingle();
-      if (saved) restore(saved.data as Workspace);
-      setStatus(error?.message || (saved ? 'Werkruimte teruggezet.' : 'Er is nog geen back-up.'));
-    } else {
-      const { error } = await cloud.from('workspaces').upsert({ user_id: data.user.id, data: workspace });
-      setStatus(error?.message || 'Werkruimte opgeslagen in Supabase.');
-    }
-  }
+export const defaultProfileName = 'Mijn account';
+export function SettingsPanel({ preferences, setPreferences, sync }: { preferences: Preferences; setPreferences: Dispatch<SetStateAction<Preferences>>; sync: ReturnType<typeof useWorkspace> }) {
   return <div className="card form-card form-grid"><h2>Weergave</h2>
     <label className="check"><input type="checkbox" checked={preferences.group} onChange={e => setPreferences(current => ({ ...current, group: e.target.checked }))} />Schooluren samenvoegen</label>
     <label className="check"><input type="checkbox" checked={preferences.dark} onChange={e => setPreferences(current => ({ ...current, dark: e.target.checked }))} />Donkere modus</label>
-    <h2>Account</h2><label>Profielnaam<input type="text" maxLength={60} value={preferences.displayName ?? defaultProfileName} onChange={event => setPreferences(current => ({ ...current, displayName: event.target.value }))} onBlur={event => { const displayName = event.target.value.trim() || defaultProfileName; setPreferences(current => ({ ...current, displayName })); }} /></label>{!cloud ? <p>Supabase is nog niet geconfigureerd. Afspraken worden in deze browser bewaard.</p> : user ? <>
-      <p>Ingelogd als {user}</p><div className="wrap"><button className="control" onClick={() => backup(false)}>Back-up opslaan</button><button className="control" onClick={() => backup(true)}>Back-up terugzetten</button><button className="control" onClick={() => cloud.auth.signOut()}>Uitloggen</button></div>
-    </> : <form className="form-grid" onSubmit={async e => { e.preventDefault(); const { error } = await cloud.auth.signInWithOtp({ email, options: { emailRedirectTo: location.origin } }); setStatus(error?.message || 'Controleer je e-mail voor de inloglink.'); }}><label>E-mailadres<input type="email" required value={email} onChange={e => setEmail(e.target.value)} /></label><button className="primary">Stuur een inloglink</button></form>}
-    <p role="status">{status}</p>
+    <h2>Account</h2><label>Profielnaam<input type="text" maxLength={60} value={preferences.displayName ?? defaultProfileName} onChange={event => setPreferences(current => ({ ...current, displayName: event.target.value }))} onBlur={event => { const displayName = event.target.value.trim() || defaultProfileName; setPreferences(current => ({ ...current, displayName })); }} /></label>
+    <AccountPanel sync={sync} />
   </div>;
 }
 
