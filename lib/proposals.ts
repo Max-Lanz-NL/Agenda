@@ -2,7 +2,9 @@ import { createClient } from '@supabase/supabase-js';
 
 const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const key = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY;
-export const cloud = url && key ? createClient(url, key) : null;
+export const cloud = url && key ? createClient(url, key, {
+  auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true, flowType: 'implicit' },
+}) : null;
 
 export type Proposal = {
   id: string; incoming: boolean; sender: string; day: string; start: string; end: string;

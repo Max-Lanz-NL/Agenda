@@ -11,9 +11,11 @@ Met `npm test` controleer je de kalender- en synchronisatielogica. `npm run buil
 1. Maak een Supabase-project aan en pas de SQL-migraties onder `supabase/migrations` in volgorde toe, gevolgd door `supabase/workspace-sync.sql`.
 2. Kopieer `.env.example` naar `.env.local` en vul de URL, publishable key en server-side secret key in. Zet dezelfde variabelen in Vercel.
 3. Stel de Site URL en toegestane omleidings-URL's voor de e-mailinloglink in Supabase in. Gebruik het domein van de app en voor lokale tests http://localhost:3000.
-4. Open **Instellingen** om met een e-maillink in te loggen. Gebruik op elk apparaat hetzelfde e-mailadres en hetzelfde app-domein. Kies eenmalig **Lokale agenda toevoegen** om bestaande browserafspraken en taken naar je account over te nemen. Je kunt ook JSON-back-ups downloaden en importeren.
+4. Open **Instellingen** om een account met e-mailadres en wachtwoord aan te maken. Bevestig je e-mailadres en log in. Inloggen met een e-maillink blijft beschikbaar. Gebruik op elk apparaat hetzelfde account en hetzelfde app-domein. Kies eenmalig **Lokale agenda toevoegen** om bestaande browserafspraken en taken naar je account over te nemen. Je kunt ook JSON-back-ups downloaden en importeren.
 5. De app slaat wijzigingen lokaal direct op en synchroniseert ze automatisch na ongeveer een seconde. Open apparaten controleren elke 15 seconden en bij terugkeren naar de app op wijzigingen. De opslagstatus staat boven de agenda. Bij verbindingsverlies blijven wijzigingen lokaal bewaard en wordt synchronisatie opnieuw geprobeerd zodra de verbinding terugkomt. Conflicterende wijzigingen aan hetzelfde gegeven vragen een keuze. Verschillende afspraken en velden worden samengevoegd met versiecontrole in de database.
 6. Open **Beschikbaarheid** om een openbare link te maken, te kopiëren of in te trekken. De link bevat een momentopname van de berekende vrije tijden.
+
+De browser bewaart de Supabase-sessie en vernieuwt toegangstokens automatisch. Er is geen door de app ingestelde inactiviteitslimiet. Een wachtwoordwijziging meldt alle sessies af, op andere apparaten verwerkt bij de volgende sessievernieuwing. Handmatig uitloggen en het wissen van browsergegevens beëindigen de lokale aanmelding ook. Via **Wachtwoord vergeten?** kun je een herstellink aanvragen. De Site URL en redirect allowlist moeten het productiedomein en de `?account=recovery`-terugkeer ondersteunen.
 
 ## Afbakening eerste versie
 

@@ -19,6 +19,7 @@ export function useWorkspace() {
   const [state, setState] = useState<SyncState>({ data: emptyWorkspace(), status: 'loading', message: 'Agenda laden…' });
   const [ready, setReady] = useState(false);
   const [user, setUser] = useState<{ id: string; email: string } | null>(null);
+  const [recovering, setRecovering] = useState(false);
   const [hasLocalData, setHasLocalData] = useState(false);
   const sync = useRef<WorkspaceSync | null>(null);
   const local = useRef<Cache>({ data: emptyWorkspace(), base: null });
@@ -90,8 +91,13 @@ export function useWorkspace() {
 
     if (!cloud) selectAccount(null);
     // Keep Supabase calls out of the auth callback, which runs under its session lock.
-    const subscription = cloud?.auth.onAuthStateChange((_event, session) => {
-      setTimeout(() => selectAccount(session?.user || null), 0);
+    const subscription = cloud?.auth.onAuthStateChange((event, session) => {
+      setTimeout(() => {
+        if (!active) return;
+        if (event === 'PASSWORD_RECOVERY') setRecovering(true);
+        if (event === 'SIGNED_OUT') setRecovering(false);
+        selectAccount(session?.user || null);
+      }, 0);
     }).data.subscription;
     const refresh = () => { if (document.visibilityState === 'visible') void sync.current?.sync(); };
     const interval = setInterval(refresh, 15000);
@@ -158,6 +164,6 @@ export function useWorkspace() {
   }
 
   const restore = (data: Workspace) => { sync.current?.change(() => workspace(data)); void sync.current?.sync(); };
-  return { ...state, ready, user, hasLocalData, editable: !!sync.current, setEvents, setCalendars, setPreferences, setTasks, restore, importLocal, exportData,
+  return { ...state, ready, user, recovering, hasLocalData, editable: !!sync.current, setEvents, setCalendars, setPreferences, setTasks, restore, importLocal, exportData,
     retry: () => sync.current?.sync(), resolve: (useLocal: boolean) => sync.current?.resolve(useLocal) };
 }
